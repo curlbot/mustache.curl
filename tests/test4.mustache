@@ -1,0 +1,32 @@
+Hello {{name}}.
+
+{{#person}}
+Never Show.
+{{/person}}
+{{^person}}
+Show.
+{{/person}}
+
+{{#list}}
+Never Show.
+{{/list}}
+{{^list}}
+Show.
+{{/list}}
+
+{{#no-list}}
+Never Show.
+{{/no-list}}
+{{^no-list}}
+Show.
+{{/no-list}}
+
+Today{{! ignore me }}.
+
+{{#person?}}
+Hi {{name}}.
+{{/person?}}
+
+{{#wrapped}}
+{{name}} is awesome.
+{{/wrapped}}

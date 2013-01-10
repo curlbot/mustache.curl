@@ -1,0 +1,202 @@
+||| Copyright (C) SCSK Corp. All Rights Reserved.
+
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+
+|||
+||| @author Hitoshi Okada
+|||
+
+{curl 8.0 applet}
+{applet manifest="manifest.mcurl"}
+
+{import * from CURL.IO.JSON}
+{import * from COM.CURL.TEMPLATING-SYSTEM.MUSTACHE}
+
+{def disp = {spaced-vbox width = 10cm}}
+
+{value
+    def template1 = 
+        {Template.from-InputStream 
+            {read-open {url "test1.mustache"}}
+        }
+    def out1 = {StringBuf}
+    {merge-template 
+        template1,
+        {{HashTable-of String, any}
+            "name", "Chris",
+            "value", 10000,
+            "taxed_value", 10000 - (10000 * 0.4),
+            "in_ca", true,
+            "cars", {{Array-of any}
+                        {{HashTable-of String, any}
+                            "company", "<b>Toyota</b>",
+                            "color", "white"
+                        },
+                        {{HashTable-of String, any}
+                            "company", "Honda",
+                            "color", "red"
+                        }
+                    }
+        },
+        out1
+    }
+    {disp.add {TextArea height = 5cm, value = {out1.to-String}}}
+
+    def out2 = {StringBuf}
+    {merge-template
+        {Template.from-InputStream 
+            {read-open {url "test2.mustache"}}
+        },
+        {{HashTable-of String, any}
+            "array", {Array
+                         {{HashTable-of String, any}
+                             "name", "Hitoshi",
+                             "is_man", true,
+                             "age", 37
+                         },
+                         {{HashTable-of String, any}
+                             "name", "Yohsuke",
+                             "is_man", false,
+                             "age", 34
+                         },
+                         {{HashTable-of String, any}
+                             "name", "Hey",
+                             "is_man", true,
+                             "age", 33
+                         }
+                     },
+            "array2", {Array
+                         {{HashTable-of String, any}
+                             "name", "Hitoshi",
+                             "is_man", true,
+                             "age", 37,
+                             "array3", {Array
+                                           {{HashTable-of String, any}
+                                               "is_tokyo", true,
+                                               "desc", "+11+"
+                                           },
+                                           {{HashTable-of String, any}
+                                               "is_tokyo", true,
+                                               "desc", "+12+"
+                                           },
+                                           {{HashTable-of String, any}
+                                               "is_tokyo", true,
+                                               "desc", "+13+"
+                                           }
+                                       }
+                         },
+                         {{HashTable-of String, any}
+                             "name", "Yohsuke",
+                             "is_man", false,
+                             "age", 34,
+                             "array3", {Array
+                                           {{HashTable-of String, any}
+                                               "is_tokyo", true,
+                                               "desc", "+21+"
+                                           },
+                                           {{HashTable-of String, any}
+                                               "is_tokyo", true,
+                                               "desc", "+22+"
+                                           },
+                                           {{HashTable-of String, any}
+                                               "is_tokyo", true,
+                                               "desc", "+23+"
+                                           }
+                                       }
+                         },
+                         {{HashTable-of String, any}
+                             "name", "Hey",
+                             "is_man", true,
+                             "age", 33,
+                             "array3", {Array
+                                           {{HashTable-of String, any}
+                                               "is_tokyo", true,
+                                               "desc", "+31+"
+                                           },
+                                           {{HashTable-of String, any}
+                                               "is_tokyo", true,
+                                               "desc", "+32+"
+                                           },
+                                           {{HashTable-of String, any}
+                                               "is_tokyo", true,
+                                               "desc", "+33+"
+                                           }
+                                       }
+                         }
+                     }
+        },
+        out2
+    }
+    {disp.add {TextArea height = 5cm, value = {out2.to-String}}}
+
+    def out3 = {StringBuf}
+    {merge-template 
+        template1, || re-use
+        {{HashTable-of String, any}
+            "name", "Hitoshi",
+            "value", 20000,
+            "taxed_value", 200000,
+            "in_ca", true,
+            "cars", {{Array-of any}
+                        {{HashTable-of String, any}
+                            "company", "<b>Toyota</b>",
+                            "color", "white"
+                        },
+                        {{HashTable-of String, any}
+                            "company", "<b>Honda</b>",
+                            "color", "red"
+                        }
+                    }
+        },
+        out3
+    }
+    {disp.add {TextArea height = 5cm, value = {out3.to-String}}}
+
+    def out4 = {StringBuf}
+    {merge-template
+        {Template.from-InputStream
+            {read-open {url "test4.mustache"}}
+        },
+        {JsonObject || You can use json, too.
+            "name", "Hoo",
+            "list", {JsonArray},
+            "person?", {JsonObject "name", "Jon"},
+            "wrapped", {proc {t:String}:String ||Template
+                           {return "<b>" & t & "</b>"}
+                           ||{return {Template.from-String "<b>" & t & "</b>"}}
+                       }
+        },
+        out4
+    }
+    {disp.add {TextArea height = 5cm,  value = {out4.to-String}}}
+    
+    def out5 = {StringBuf}
+    {merge-template
+        {Template.from-InputStream
+            {read-open {url "test5.mustache"}}
+        },
+        {JsonObject || You can use json, too.
+            "c", "ate",
+            "a", {JsonObject "b", 
+                     {JsonArray
+                         {JsonObject "name", "A"},
+                         {JsonObject "name", "B"}
+                     }
+                 }
+        },
+        out5
+    }
+    {disp.add {TextArea height = 5cm,  value = {out5.to-String}}}
+    
+    disp
+}

@@ -1,0 +1,325 @@
+||| Copyright (C) SCSK Corp. All Rights Reserved.
+
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+
+|||
+||| @author Hitoshi Okada
+|||
+
+|| KindOfTag
+{define-enum KindOfTag
+    escaped-variable,
+    unescaped-variable,
+    begin-section,
+    begin-inverted-section,
+    end-section,
+    partial,
+    set-delimiter,
+    comment,
+    unknown
+}
+
+|| TemplateMerger
+{define-class public TemplateMerger
+
+  field public-get private-set template:Template
+
+  {method private {parse-tag 
+                      t:Template,
+                      raw-text:#TextOutputStream = null
+                  }:(tag:String, kind:KindOfTag)
+    def tag = {StringBuf}
+    let kind = KindOfTag.escaped-variable
+    def c = {t.read-one out = raw-text}
+    {switch c
+     case '#' do
+        set kind = KindOfTag.begin-section
+     case '^' do
+        set kind = KindOfTag.begin-inverted-section
+     case '/' do
+        set kind = KindOfTag.end-section
+     case '>' do
+        set kind = KindOfTag.partial
+     case '=' do
+        set kind = KindOfTag.set-delimiter
+     case '!' do
+        set kind = KindOfTag.comment
+     case '\ ' do
+        || skip white space in tag
+     case '&' do
+        || TODO: not support "{{{tag}}}"
+        set kind = KindOfTag.unescaped-variable
+     else
+        || escaped-variable
+        {tag.append c}
+    }
+    {while not t.end-of-template? do
+        let c:char = {t.read-one out = raw-text}
+        {if c == ' ' and 
+            not (kind == KindOfTag.set-delimiter or kind == KindOfTag.comment)
+         then
+            {continue} || skip white space in tag
+        }
+
+        || check if tag or not
+        def tag-buf = {StringBuf}
+        let end-of-tag?:bool = true
+        {for d key i in self.template.current-end-delim do
+            {if c == d then
+                {tag-buf.append c}
+             else
+                set end-of-tag? = false
+                {tag.concat tag-buf}
+                {break}
+            }
+            {if i != self.template.current-end-delim.size - 1 then
+                set c = {t.read-one out = raw-text}
+            }
+        }
+
+        {if end-of-tag? then
+            {return ({tag.to-String}, kind)}
+        }
+
+        {tag.append c}
+    }
+    {error "not right template format."}
+  }
+
+  {method private {read-block
+                      t:Template,
+                      hash:{HashTable-of String, any},
+                      raw-text:#TextOutputStream = null
+                  }:StringBuf
+    def buf = {StringBuf}
+    {while not t.end-of-template? do
+        let c:char = {t.read-one out = raw-text}
+        || check if tag or not
+        def tag-buf = {StringBuf}
+        let begin-of-tag?:bool = true
+        {for d key i in self.template.current-begin-delim do
+            {if c == d then
+                {tag-buf.append c}
+             else
+                set begin-of-tag? = false
+                {buf.concat tag-buf}
+                {break}
+            }
+            {if i != self.template.current-begin-delim.size - 1 then
+                set c = {t.read-one out = raw-text}
+            }
+        }
+
+        {if begin-of-tag? then
+            def (tag, kind) = {self.parse-tag t, raw-text = raw-text}
+            {switch kind
+             case KindOfTag.escaped-variable do
+                let (value:any, found?:bool) = {hash.get-if-exists tag}
+                {if not found? then
+                    set value = ""
+                }
+                {buf.concat {escape value & ""}}
+
+             case KindOfTag.unescaped-variable do
+                let (value:any, found?:bool) = {hash.get-if-exists tag}
+                {if not found? then
+                    set value = ""
+                }
+                {buf.concat value & ""}
+                
+             case KindOfTag.begin-section do
+                let (value:any, found?:bool) = {hash.get-if-exists tag}
+                {if not found? then
+                    set value = null
+                }
+                {type-switch value
+                 case n:Null do
+                    || only read
+                    {self.read-block 
+                        t, 
+                        {{HashTable-of String, any}}, || empty  
+                        raw-text = raw-text
+                    }
+                 case condition:bool do
+                    def out = 
+                        {self.read-block
+                            t,
+                            {{HashTable-of String, any}}, || empty 
+                            raw-text = raw-text
+                        }
+                    {if condition then
+                        {buf.concat out}
+                    }
+                 case array:{Array-of any} do
+                    {if array.size > 0 then
+                        def raw = {StringBuf}
+                        def out = 
+                            {self.read-block 
+                                t, array[0], raw-text = raw
+                            }
+                        {if-non-null r = raw-text then
+                            {r.write-one-string {raw.to-String}}
+                        }
+                        {buf.concat out}
+                        {if array.size > 1 then
+                            {for i = 1 below array.size do
+                                def v = array[i]
+                                def t = {Template.from-String raw}
+                                def out = {self.read-block t, v}
+                                {buf.concat out}
+                            }
+                        }
+                     else
+                        || only read
+                        {self.read-block
+                            t, 
+                            {{HashTable-of String, any}}, 
+                            raw-text = raw-text
+                        }
+                    }
+                 case p:{proc-type {String}:String} do 
+                    || FIXME: Should implement render() api
+                    def out = 
+                        {self.read-block 
+                            t, hash, raw-text = raw-text
+                        }
+                    {buf.concat {p {out.to-String}}}
+                    || TODO: Should be {proc-type {String}:Template}
+                    ||def raw = {StringBuf}
+                    ||def out = {self.read-block t, hash, raw-text = raw}
+                    ||{if-non-null r = raw-text then
+                    ||    {r.write-one-string {raw.to-String}}
+                    ||}
+                    ||{dump raw}
+                    ||def changed-template = {p {raw.to-String}}
+                    ||{buf.concat 
+                    ||    {{self.read-block changed-template, hash}.to-String}
+                    ||}
+                 case v:{HashTable-of String, any} do
+                    def out = 
+                        {self.read-block 
+                            t, value, raw-text = raw-text 
+                        }
+                    {buf.concat out} || always true if object exists
+                 else
+                    || String, int or some others
+                    def out = 
+                        {self.read-block
+                            t,
+                            {{HashTable-of String, any}}, || empty 
+                            raw-text = raw-text
+                        }
+                    {buf.concat out} || always true if object exists
+                }
+                
+             case KindOfTag.begin-inverted-section do
+                let ok?:bool
+                let (value:any, found?) = {hash.get-if-exists tag}
+                {if not found? then 
+                    set value = null
+                }
+                {type-switch value
+                 case n:Null do
+                    set ok? = false
+                 case condition:bool do
+                    set ok? = condition
+                 case array:{Array-of any} do
+                    {if array.size > 0 then
+                        set ok? = true
+                    }
+                 else
+                    set ok? = true
+                }
+                def out = 
+                    {self.read-block
+                        t, hash, raw-text = raw-text
+                    }
+                {if not ok? then
+                    {buf.concat out}
+                }
+                
+             case KindOfTag.end-section do
+                {return buf}
+                
+             case KindOfTag.partial do
+                def url-str = 
+                    {if-non-null origin-url = t.origin-url then
+                        origin-url.parent-dir-name
+                     else
+                        {get-the-applet}.url.parent-dir-name
+                    }
+                def out = 
+                    {self.read-block 
+                        {Template.from-InputStream
+                            {read-open
+                                {url {format "%s/%s.mustache", url-str, tag}}
+                            }
+                        },
+                        hash
+                    }
+                {buf.concat out}
+                
+             case KindOfTag.set-delimiter do
+                def delims =
+                    {{tag.trim-right-clone 
+                         trim-chars = {CharClass '='}}.split
+                    }
+                set self.template.current-begin-delim = delims[0]
+                set self.template.current-end-delim = delims[1]
+                
+             case KindOfTag.comment do
+                || only skipped
+                
+             else
+                {error {format "Unknown tag (%s[%s])", tag, kind}} 
+            }
+            
+         else
+            {buf.append c}
+        }
+    }
+    {return buf}
+  }
+
+  {method public {merge 
+                     hash:{HashTable-of String, any},
+                     out:TextOutputStream
+                 }:void
+    {out.write-one-string 
+        {self.read-block self.template, hash}
+    }
+    {self.template.reopen}
+  }
+
+  || constructor 
+  {constructor public {default
+                          template:Template
+                      }
+    set self.template = template
+  }
+}
+
+{doc-next
+    {purpose 
+        Merge hash data to a mustache(http://mustache.github.com/) template.
+    }
+}
+{define-proc public {merge-template
+                        template:Template,
+                        hash:{HashTable-of String, any},
+                        out:TextOutputStream
+                    }:void
+    def merger = {TemplateMerger template}
+    {merger.merge hash, out}
+}
+

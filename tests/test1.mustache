@@ -1,0 +1,20 @@
+Hello {{name}}.
+You have just won ${{value}}!
+{{#in_ca}}
+Well, ${{taxed_value}}, {{! comment }} after taxes.
+{{/in_ca}}
+{{> child}}
+{{#cars}}
+ {{& company}} & {{color}}
+{{/cars}}
+{{^in_ca}}
+  Negative test
+{{/in_ca}}
+
+{{=<% %>=}}
+
+<%name%>
+
+<%#in_ca%>
+<%value%>
+<%/in_ca%>

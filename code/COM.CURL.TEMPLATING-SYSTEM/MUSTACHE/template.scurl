@@ -1,0 +1,160 @@
+||| Copyright (C) SCSK Corp. All Rights Reserved.
+
+||| Licensed under the Apache License, Version 2.0 (the "License");
+||| you may not use this file except in compliance with the License.
+||| You may obtain a copy of the License at
+||| 
+|||     http://www.apache.org/licenses/LICENSE-2.0
+||| 
+||| Unless required by applicable law or agreed to in writing, software
+||| distributed under the License is distributed on an "AS IS" BASIS,
+||| WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+||| See the License for the specific language governing permissions and
+||| limitations under the License.
+
+|||
+||| @author Hitoshi Okada
+|||
+
+{def default-begin-delim = "\{\{"}
+{def default-end-delim = "\}\}"}
+
+|| Template
+{define-class public abstract Template
+
+  field protected line-buf:StringBuf 
+  field protected current-begin-delim:String = default-begin-delim
+  field protected current-end-delim:String = default-end-delim
+
+  {getter abstract {end-of-template?}:bool }
+  {getter abstract {origin-url}:#Url }
+  {getter protected {matched-str}:String
+    def matched-str = 
+        {format 
+            |"^%s[#^/].*%s\ *"|, 
+            self.current-begin-delim,
+            self.current-end-delim
+        }
+    {return matched-str}
+  }
+
+  || NOTE: This method is to re-use Template.
+  {method protected {reopen}:void
+    {self.line-buf.clear}
+    set self.current-begin-delim = default-begin-delim
+    set self.current-end-delim = default-end-delim
+  }
+  {method abstract {read-one out:#TextOutputStream = null}:char }
+
+  {factory public {from-InputStream tis:TextInputStream}:Template
+    {return {InputStreamTemplate tis}}
+  }
+  {factory public {from-String str:StringInterface}:Template
+    {return {StringInterfaceTemplate str}}
+  }
+
+  {constructor {default}
+    set self.line-buf = {StringBuf}
+  }
+}
+{define-class InputStreamTemplate
+  {inherits Template}
+  
+  field private tis:TextInputStream
+
+  {getter {end-of-template?}:bool
+    {return self.tis.end-of-stream?}
+  }
+  {getter {origin-url}:#Url
+    {return self.tis.origin-url}
+  }
+  
+  {method protected {reopen}:void
+    {if-non-null u = self.tis.origin-url then
+        set self.tis = {read-open u}
+        {super.reopen}
+     else
+        {error "Have not exists file yet."}
+    }
+  }
+
+  {method {read-one
+              out:#TextOutputStream = null
+          }:char
+    || To skip return char in line which has only block tag.
+    let c:char = {self.tis.read-one}
+    {self.line-buf.append c}
+    def line = {self.line-buf.to-String}
+    {if c == '\r' then
+        set c = {self.tis.read-one}
+        {self.line-buf.append c}
+    }
+    {if c == '\n' then
+        {self.line-buf.clear}
+        {if {regexp-match? self.matched-str, line} then
+            set c = {self.tis.read-one}
+            {self.line-buf.append c}
+        }
+    }
+
+    {if-non-null o = out then
+        {o.write-one c}
+    }
+    {return c}
+  }
+
+  {constructor {default tis:TextInputStream}
+    {construct-super}
+    set self.tis = tis
+  }
+}
+{define-class StringInterfaceTemplate
+  {inherits Template}
+  
+  field private str:StringInterface
+  field private pos:int
+
+  {getter {end-of-template?}:bool
+    {return self.pos == self.str.size - 1}
+  }
+  {getter {origin-url}:#Url
+    {return null}
+  }
+
+  {method protected {reopen}:void
+    set self.pos = 0
+    {super.reopen}
+  }
+
+  {method {read-one
+              out:#TextOutputStream = null
+          }:char
+    || To skip return char in line which has only block tag.
+    let c = self.str[self.pos]
+    {self.line-buf.append c}
+    def line = {self.line-buf.to-String}
+    {if c == '\r' then
+        set c = self.str[self.pos]
+        {self.line-buf.append c}
+        {inc self.pos}
+    }
+    {if c == '\n' then
+        {self.line-buf.clear}
+        {if {regexp-match? self.matched-str, line} then
+            set c = {self.str.get self.pos}
+            {self.line-buf.append c}
+        }
+    }
+    {inc self.pos}
+
+    {if-non-null o = out then
+        {o.write-one c}
+    }
+    {return c}
+  }
+
+  {constructor {default str:StringInterface}
+    {construct-super}
+    set self.str = str
+  }
+}
